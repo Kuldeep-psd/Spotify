@@ -425,7 +425,7 @@
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
             Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
         margin: 0;
-        padding-bottom: 1rem;
+        padding: 1rem;
         overflow-x: hidden;
     }
 
@@ -464,11 +464,10 @@
         margin-bottom: 2.5rem;
     }
     h1 {
-        font-size: 2rem;
+        font-size: 3rem;
         font-family: "fit", sans-serif;
         font-weight: 400;
-        font-style: normal;
-        
+        font-style: normal;        
         margin-bottom: 0.5rem;
     }
     .subtitle {
