@@ -28,6 +28,7 @@
                 p.colorMode(p.HSB, 255);
                 p.noLoop();
                 p.background("#FFFFFF");
+                p.pixelDensity(3);
             };
 
             const clearCanvas = () => {
@@ -75,13 +76,13 @@
                 p.filter(p.BLUR, 2);
 
                 p.fill("black");
-                p.textFont("sans-serif");
+                p.textFont("nitti-typewriter-normal");
                 p.textSize(16);
+                p.textStyle(p.NORMAL);
                 p.text(artist, 25, 35);
                 p.text(song, 25, 55);
             };
 
-            // ✅ Fixed updateWithProps function
             p.updateWithProps = async (props) => {
                 if (!props) {
                     clearCanvas();
@@ -89,7 +90,6 @@
                     return;
                 }
 
-                // Sanitize inputs to avoid NaN breaking the draw
                 energy = props.energy ?? 0;
                 danceability = props.danceability ?? 0;
                 valence = props.valence ?? 0;
@@ -97,11 +97,11 @@
                 tempo = props.tempo ?? 0;
                 acousticness = props.acousticness ?? 0;
                 artist = props.artists ?? "";
+                artist = props.artists.replaceAll(';', ', ');
                 song = props.track_name ?? "";
 
                 p.redraw();
 
-                // ✅ Dispatch after redraw with slight delay to ensure completion
                 requestAnimationFrame(() => {
                     dispatch("generationComplete");
                 });
@@ -122,7 +122,6 @@
         }
     });
 
-    // ✅ Single reactive statement (removed duplicate)
     $: if (sketchInstance && track) {
         try {
             sketchInstance.updateWithProps(track);
