@@ -1,22 +1,38 @@
 <script>
     import PosterCanvas from "$lib/components/PosterCanvas.svelte";
 
+    // --- State Management ---
+    let mode = "search"; // 'search' or 'sandbox'
+
+    // Search Mode State
     let searchText = "";
     let suggestions = [];
-
     let currentTrackInfo = null;
+    let isShowingSkeleton = false;
+
+    // Sandbox Mode State
+    let sandboxTrackInfo = {
+        track_name: "",
+        artists: "",
+        energy: 0.75,
+        danceability: 0.8,
+        valence: 0.6,
+        loudness: -7,
+        tempo: 125,
+        acousticness: 0.1,
+    };
+
+    // Shared State
     let posterTrackInfo = null;
     let isGenerating = false;
     let posterIsVisible = false;
-    let isShowingSkeleton = false;
-
     let debounceTimer;
+
     async function getSuggestions() {
         if (searchText.length < 1) {
             suggestions = [];
             return;
         }
-
         const response = await fetch(`/api/search?q=${searchText}`);
         if (response.ok) {
             suggestions = await response.json();
@@ -25,9 +41,7 @@
 
     function debouncedGetSuggestions() {
         clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-            getSuggestions();
-        }, 300);
+        debounceTimer = setTimeout(() => getSuggestions(), 300);
     }
 
     function selectSuggestion(track) {
@@ -49,7 +63,11 @@
         posterIsVisible = false;
 
         setTimeout(() => {
-            posterTrackInfo = currentTrackInfo;
+            if (mode === "sandbox") {
+                posterTrackInfo = { ...sandboxTrackInfo };
+            } else {
+                posterTrackInfo = currentTrackInfo;
+            }
         }, 50);
     }
 
@@ -61,8 +79,12 @@
     function downloadPoster() {
         const canvas = document.querySelector("canvas");
         if (canvas) {
+            const trackName =
+                mode === "sandbox"
+                    ? "custom_poster"
+                    : currentTrackInfo.track_name;
             const link = document.createElement("a");
-            link.download = `${currentTrackInfo.track_name}_poster.png`;
+            link.download = `${trackName}.png`;
             link.href = canvas.toDataURL("image/png");
             link.click();
         }
@@ -70,7 +92,6 @@
 </script>
 
 <main>
-    <!-- ✅ NEW: Animated Background -->
     <div class="background-animation"></div>
 
     <div class="container">
@@ -81,43 +102,83 @@
             </p>
         </header>
 
-        <div class="search-container">
-            <input
-                type="text"
-                bind:value={searchText}
-                on:input={debouncedGetSuggestions}
-                placeholder="Search for a track title..."
-                autocomplete="off"
-            />
-            {#if suggestions.length > 0}
-                <ul class="suggestions-list">
-                    {#each suggestions as suggestion (suggestion.track_id)}
-                        <li>
-                            <button
-                                on:click={() => selectSuggestion(suggestion)}
-                            >
-                                {suggestion.track_name}
-                                <span class="artist"
-                                    >by {suggestion.artists.replaceAll(
-                                        ";",
-                                        ", ",
-                                    )}</span
-                                >
-                            </button>
-                        </li>
-                    {/each}
-                </ul>
-            {/if}
+        <div class="mode-toggle">
+            <button
+                class:active={mode === "search"}
+                on:click={() => (mode = "search")}>Search</button
+            >
+            <button
+                class:active={mode === "sandbox"}
+                on:click={() => (mode = "sandbox")}>Sandbox</button
+            >
         </div>
 
-        {#if currentTrackInfo}
+        {#if mode === "search"}
+            <div class="search-container">
+                <input
+                    type="text"
+                    bind:value={searchText}
+                    on:input={debouncedGetSuggestions}
+                    placeholder="Search for a track title..."
+                    autocomplete="off"
+                />
+                {#if suggestions.length > 0}
+                    <ul class="suggestions-list">
+                        {#each suggestions as suggestion (suggestion.track_id)}
+                            <li>
+                                <button
+                                    on:click={() =>
+                                        selectSuggestion(suggestion)}
+                                >
+                                    {suggestion.track_name}
+                                    <span class="artist"
+                                        >by {suggestion.artists.replaceAll(
+                                            ";",
+                                            ", ",
+                                        )}</span
+                                    >
+                                </button>
+                            </li>
+                        {/each}
+                    </ul>
+                {/if}
+            </div>
+        {/if}
+
+        {#if (mode === "search" && currentTrackInfo) || mode === "sandbox"}
             <div class="content-wrapper">
                 <div class="canvas-container">
+                    {#if posterIsVisible}
+                        <button
+                            class="download-icon-button"
+                            on:click={downloadPoster}
+                            title="Download Poster"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="20"
+                                height="20"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                ><path
+                                    d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
+                                ></path><polyline points="7 10 12 15 17 10"
+                                ></polyline><line x1="12" y1="15" x2="12" y2="3"
+                                ></line></svg
+                            >
+                        </button>
+                    {/if}
+
                     {#if !posterIsVisible && !isGenerating}
                         <div class="canvas-placeholder">
                             <p>
-                                Click "Generate Poster" to create the
-                                visualization.
+                                {mode === "sandbox"
+                                    ? 'Adjust the sliders and hit "Generate"'
+                                    : 'Click "Generate Poster" to create the visualization.'}
                             </p>
                         </div>
                     {/if}
@@ -139,94 +200,218 @@
                 </div>
 
                 <div class="track-details">
-                    <h3 class:skeleton={isShowingSkeleton}>
-                        {#if !isShowingSkeleton}{currentTrackInfo.track_name}{:else}&nbsp;{/if}
-                    </h3>
-                    <p class="artist-name" class:skeleton={isShowingSkeleton}>
-                        {#if !isShowingSkeleton}by {currentTrackInfo.artists.replaceAll(
-                                ";",
-                                ", ",
-                            )}{:else}&nbsp;{/if}
-                    </p>
-
-                    <div class="features-grid">
-                        <div class="feature-item">
-                            <span class="label">Energy</span>
-                            <span
-                                class="value"
-                                class:skeleton={isShowingSkeleton}
-                            >
-                                {#if !isShowingSkeleton}{currentTrackInfo.energy}{:else}&nbsp;{/if}
-                            </span>
-                        </div>
-                        <div class="feature-item">
-                            <span class="label">Danceability</span>
-                            <span
-                                class="value"
-                                class:skeleton={isShowingSkeleton}
-                            >
-                                {#if !isShowingSkeleton}{currentTrackInfo.danceability}{:else}&nbsp;{/if}
-                            </span>
-                        </div>
-                        <div class="feature-item">
-                            <span class="label">Acousticness</span>
-                            <span
-                                class="value"
-                                class:skeleton={isShowingSkeleton}
-                            >
-                                {#if !isShowingSkeleton}{currentTrackInfo.acousticness}{:else}&nbsp;{/if}
-                            </span>
-                        </div>
-                        <div class="feature-item">
-                            <span class="label">Loudness</span>
-                            <span
-                                class="value"
-                                class:skeleton={isShowingSkeleton}
-                            >
-                                {#if !isShowingSkeleton}{currentTrackInfo.loudness}
-                                    dB{:else}&nbsp;{/if}
-                            </span>
-                        </div>
-                        <div class="feature-item">
-                            <span class="label">Tempo</span>
-                            <span
-                                class="value"
-                                class:skeleton={isShowingSkeleton}
-                            >
-                                {#if !isShowingSkeleton}{Math.floor(
-                                        currentTrackInfo.tempo,
-                                    )} BPM{:else}&nbsp;{/if}
-                            </span>
-                        </div>
-                        <div class="feature-item">
-                            <span class="label">Valence</span>
-                            <span
-                                class="value"
-                                class:skeleton={isShowingSkeleton}
-                            >
-                                {#if !isShowingSkeleton}{currentTrackInfo.valence}{:else}&nbsp;{/if}
-                            </span>
-                        </div>
-                    </div>
-
-                    {#if currentTrackInfo && !posterIsVisible}
-                        <button
-                            on:click={handleGenerateClick}
-                            class="action-button generate-button"
-                            disabled={isGenerating}
+                    {#if mode === "search"}
+                        <h3 class:skeleton={isShowingSkeleton}>
+                            {#if !isShowingSkeleton}{currentTrackInfo.track_name}{:else}&nbsp;{/if}
+                        </h3>
+                        <p
+                            class="artist-name"
+                            class:skeleton={isShowingSkeleton}
                         >
-                            {isGenerating ? "Generating..." : "Generate Poster"}
-                        </button>
+                            {#if !isShowingSkeleton}by {currentTrackInfo.artists.replaceAll(
+                                    ";",
+                                    ", ",
+                                )}{:else}&nbsp;{/if}
+                        </p>
+                    {:else}
+                        <h3>{"Sandbox Mode"}</h3>
+                        <p class="artist-name">{"Create a custom poster"}</p>
                     {/if}
 
-                    {#if posterIsVisible}
-                        <button
-                            on:click={downloadPoster}
-                            class="action-button download-button"
-                        >
-                            Download Poster
-                        </button>
+                    {#if mode === "sandbox"}
+                        <div class="sandbox-controls">
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <label for="energy">Energy</label>
+                                    <span class="slider-value"
+                                        >{sandboxTrackInfo.energy.toFixed(
+                                            2,
+                                        )}</span
+                                    >
+                                </div>
+                                <input
+                                    type="range"
+                                    id="energy"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    bind:value={sandboxTrackInfo.energy}
+                                    style="--progress-percent: {sandboxTrackInfo.energy *
+                                        100}%"
+                                />
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <label for="dance">Danceability</label>
+                                    <span class="slider-value"
+                                        >{sandboxTrackInfo.danceability.toFixed(
+                                            2,
+                                        )}</span
+                                    >
+                                </div>
+                                <input
+                                    type="range"
+                                    id="dance"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    bind:value={sandboxTrackInfo.danceability}
+                                    style="--progress-percent: {sandboxTrackInfo.danceability *
+                                        100}%"
+                                />
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <label for="acoustic">Acousticness</label>
+                                    <span class="slider-value"
+                                        >{sandboxTrackInfo.acousticness.toFixed(
+                                            2,
+                                        )}</span
+                                    >
+                                </div>
+                                <input
+                                    type="range"
+                                    id="acoustic"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    bind:value={sandboxTrackInfo.acousticness}
+                                    style="--progress-percent: {sandboxTrackInfo.acousticness *
+                                        100}%"
+                                />
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <label for="valence">Valence</label>
+                                    <span class="slider-value"
+                                        >{sandboxTrackInfo.valence.toFixed(
+                                            2,
+                                        )}</span
+                                    >
+                                </div>
+                                <input
+                                    type="range"
+                                    id="valence"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    bind:value={sandboxTrackInfo.valence}
+                                    style="--progress-percent: {sandboxTrackInfo.valence *
+                                        100}%"
+                                />
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <label for="loudness">Loudness</label>
+                                    <span class="slider-value"
+                                        >{sandboxTrackInfo.loudness} dB</span
+                                    >
+                                </div>
+                                <input
+                                    type="range"
+                                    id="loudness"
+                                    min="-60"
+                                    max="0"
+                                    step="1"
+                                    bind:value={sandboxTrackInfo.loudness}
+                                    style="--progress-percent: {((sandboxTrackInfo.loudness +
+                                        60) /
+                                        60) *
+                                        100}%"
+                                />
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <label for="tempo">Tempo</label>
+                                    <span class="slider-value"
+                                        >{sandboxTrackInfo.tempo} BPM</span
+                                    >
+                                </div>
+                                <input
+                                    type="range"
+                                    id="tempo"
+                                    min="50"
+                                    max="250"
+                                    step="1"
+                                    bind:value={sandboxTrackInfo.tempo}
+                                    style="--progress-percent: {((sandboxTrackInfo.tempo -
+                                        50) /
+                                        200) *
+                                        100}%"
+                                />
+                            </div>
+                        </div>
                     {/if}
+
+                    {#if mode === "search"}
+                        <div class="features-grid">
+                            <div class="feature-item">
+                                <span class="label">Energy</span>
+                                <span
+                                    class="value"
+                                    class:skeleton={isShowingSkeleton}
+                                >
+                                    {#if !isShowingSkeleton}{currentTrackInfo.energy}{:else}&nbsp;{/if}
+                                </span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="label">Danceability</span>
+                                <span
+                                    class="value"
+                                    class:skeleton={isShowingSkeleton}
+                                >
+                                    {#if !isShowingSkeleton}{currentTrackInfo.danceability}{:else}&nbsp;{/if}
+                                </span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="label">Acousticness</span>
+                                <span
+                                    class="value"
+                                    class:skeleton={isShowingSkeleton}
+                                >
+                                    {#if !isShowingSkeleton}{currentTrackInfo.acousticness}{:else}&nbsp;{/if}
+                                </span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="label">Loudness</span>
+                                <span
+                                    class="value"
+                                    class:skeleton={isShowingSkeleton}
+                                >
+                                    {#if !isShowingSkeleton}{currentTrackInfo.loudness}
+                                        dB{:else}&nbsp;{/if}
+                                </span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="label">Tempo</span>
+                                <span
+                                    class="value"
+                                    class:skeleton={isShowingSkeleton}
+                                >
+                                    {#if !isShowingSkeleton}{Math.floor(
+                                            currentTrackInfo.tempo,
+                                        )} BPM{:else}&nbsp;{/if}
+                                </span>
+                            </div>
+                            <div class="feature-item">
+                                <span class="label">Valence</span>
+                                <span
+                                    class="value"
+                                    class:skeleton={isShowingSkeleton}
+                                >
+                                    {#if !isShowingSkeleton}{currentTrackInfo.valence}{:else}&nbsp;{/if}
+                                </span>
+                            </div>
+                        </div>
+                    {/if}
+
+                    <button
+                        on:click={handleGenerateClick}
+                        class="action-button generate-button"
+                        disabled={isShowingSkeleton || isGenerating}
+                    >
+                        {isGenerating ? "Generating..." : "Generate Poster"}
+                    </button>
                 </div>
             </div>
         {/if}
@@ -240,8 +425,8 @@
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
             Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
         margin: 0;
+        padding-bottom: 1rem;
         overflow-x: hidden;
-        padding-bottom: 2rem;
     }
 
     .background-animation {
@@ -250,7 +435,7 @@
         left: 0;
         width: 100vw;
         height: 100vh;
-        background: linear-gradient(45deg, #121212, #1d232a, #121212, #452f7a);
+        background: linear-gradient(45deg, #121212, #1d2a21, #121212, #211d2a);
         background-size: 400% 400%;
         animation: gradient-flow 25s ease infinite;
         z-index: -1;
@@ -279,33 +464,57 @@
         margin-bottom: 2.5rem;
     }
     h1 {
-        font-size: 5rem;
+        font-size: 2rem;
         font-family: "fit", sans-serif;
         font-weight: 400;
         font-style: normal;
+        
         margin-bottom: 0.5rem;
     }
     .subtitle {
         font-size: 1.1rem;
         color: #a0a0a0;
     }
+
+    .mode-toggle {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 2.5rem;
+        background-color: rgba(30, 30, 30, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 50px;
+        padding: 4px;
+        width: fit-content;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    .mode-toggle button {
+        background: none;
+        border: none;
+        color: #a0a0a0;
+        padding: 0.5rem 1.5rem;
+        border-radius: 50px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    .mode-toggle button.active {
+        background-color: #333;
+        color: #ffffff;
+    }
+
     .search-container {
         position: relative;
         margin-bottom: 2.5rem;
     }
 
-    /* ✅ NEW: Glassmorphism Effect */
     input,
     .suggestions-list,
     .track-details {
-        background-color: rgba(
-            30,
-            30,
-            30,
-            0.6
-        ); /* Semi-transparent background */
+        background-color: rgba(30, 30, 30, 0.6);
         backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px); /* For Safari */
+        -webkit-backdrop-filter: blur(10px);
         border: 1px solid rgba(255, 255, 255, 0.1);
     }
 
@@ -332,7 +541,7 @@
         border-radius: 0 0 8px 8px;
         list-style-type: none;
         padding: 0;
-        margin-top: -1px; /* Overlap border */
+        margin-top: -1px;
         overflow: hidden;
         z-index: 10;
         text-align: left;
@@ -369,8 +578,10 @@
     .canvas-container {
         position: relative;
         flex-shrink: 0;
-        width: 500px;
-        height: 500px;
+        width: 100%;
+        max-width: 500px;
+        aspect-ratio: 1 / 1;
+        height: auto;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -403,6 +614,7 @@
         max-width: 500px;
         padding: 1.5rem;
         border-radius: 12px;
+        box-sizing: border-box;
     }
     .track-details h3 {
         margin-top: 0;
@@ -418,6 +630,83 @@
         margin-bottom: 1.5rem;
         min-height: 21px;
     }
+
+    .sandbox-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+        margin-bottom: 2rem;
+    }
+    .slider-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    .slider-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .slider-header label {
+        font-size: 0.9rem;
+        color: #a0a0a0;
+    }
+    .slider-value {
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #e0e0e0;
+        background-color: rgba(0, 0, 0, 0.2);
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+    }
+    input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        cursor: pointer;
+        background: transparent; /* Remove default background */
+        height: 16px; /* Height for the thumb to move within */
+    }
+    /* Track */
+    input[type="range"]::-webkit-slider-runnable-track {
+        height: 3px;
+        background: linear-gradient(
+            to right,
+            #1db954 var(--progress-percent),
+            #444 var(--progress-percent)
+        );
+        border-radius: 5px;
+    }
+    input[type="range"]::-moz-range-track {
+        height: 3px;
+        background: #444;
+        border-radius: 5px;
+    }
+    /* Thumb */
+    input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        margin-top: -6.5px; /* (thumb height - track height) / -2 */
+        width: 16px;
+        height: 16px;
+        background: #e0e0e0;
+        border-radius: 50%;
+        border: 1px solid #555;
+    }
+    input[type="range"]::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        background: #e0e0e0;
+        border-radius: 50%;
+        border: 1px solid #555;
+    }
+    /* Filled part of the track for Firefox */
+    input[type="range"]::-moz-range-progress {
+        background-color: #1db954;
+        height: 3px;
+        border-radius: 5px;
+    }
+
     .features-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -425,7 +714,7 @@
         margin-bottom: 2rem;
     }
     .feature-item {
-        background-color: rgba(0, 0, 0, 0.2); /* Darker glass for contrast */
+        background-color: rgba(0, 0, 0, 0.2);
         border: 1px solid rgba(255, 255, 255, 0.05);
         padding: 1rem;
         border-radius: 8px;
@@ -471,13 +760,28 @@
     .generate-button:hover:not(:disabled) {
         background-color: #737373;
     }
-    .download-button {
-        background-color: #1db954;
-        color: #121212;
+
+    .download-icon-button {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        z-index: 10;
+        background-color: rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #e0e0e0;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background-color 0.2s;
     }
-    .download-button:hover {
-        background-color: #1ed760;
+    .download-icon-button:hover {
+        background-color: rgba(0, 0, 0, 0.8);
     }
+
     .sound-wave-loader {
         display: flex;
         justify-content: center;
@@ -542,6 +846,14 @@
     }
 
     @media (min-width: 800px) {
+        :global(body) {
+            padding-bottom: 2rem;
+        }
+
+        h1 {
+            font-size: 5rem;
+        }
+
         .content-wrapper {
             flex-direction: row;
             align-items: flex-start;
